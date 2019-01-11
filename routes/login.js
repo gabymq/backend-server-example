@@ -40,44 +40,65 @@ async function verify(token) {
     }
   }
 
-app.post('/google', async(req, res) => {
+app.post('/google', (req, res) => {
 
-    var token = req.body.token;
+    var token = req.body.token || 'XXX';
 
-    var googleUser = await verify( token )
-        .catch( e => {
-            res.status(403).json({
-                ok: false,
-                mensaje: 'Token no valido',
-            });
-        });
+    var client = new WebAuthentication.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_SECRET, '');
 
-Usuario.findOne( {email: googleUser.email }, ( err, usuarioDB ) => {
+    client.verifyIdToken(
+        token,
+        GOOGLE_CLIENT_ID,
+        // Or, if multiple clients access the backend:
+        // [CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3],
+        function(e, login) {
+            if(e) {
+                return res.status(400).json({
+                    ok:true,
+                    mensaje: 'Token no valido',
+                    errors: e
+                });
+            }
+
+            var payload = login.getPayload();
+            var userid = payload['sub'];
+            // If requuest specified a G Suite domain:
+            // var domain = payload['hd];
+
+        // .catch( e => {
+        //     res.status(403).json({
+        //         ok: false,
+        //         mensaje: 'Token no valido',
+        //     });
+        // });
+
+Usuario.findOne( {email: payload.email }, ( err, usuario ) => {
     
     if ( err ){
         return res.status(500).json({
             ok: false,
-            mensaje: 'Error al buscar  usuario',
+            mensaje: 'Error al buscar  usuario -login',
             errors: err
         });
     }
 
-    if ( usuarioDB ) {
+    if ( usuario ) {
 
-        if ( usuarioDB.google === false ) {
+        if ( usuario.google === false ) {
             return res.status(400).json({
                 ok: false,
                 mensaje: 'Debe usar su autenticacion normal',
             });  
         } else {
-            usuarioDB.password = ':)';
+            usuario.password = ':)';
             var token = jwt.sign({ usuario: usuarioDB }, SEED, { expiresIn: 14400 }); 
 // 4 horas
             res.status(200).json({
                 ok: true,
-                usuario: usuarioDB,
+                usuario: usuario,
                 token: token,
-                id: usuarioDB._id
+                id: usuarioDB._id,
+                menu: obtenerMenu(usuario.role)
             });
         }
         
@@ -85,20 +106,29 @@ Usuario.findOne( {email: googleUser.email }, ( err, usuarioDB ) => {
         // El usuario no exite hay que crearlo
         var usuario = new Usuario();
 
-        usuario.nombre = googleUser.nombre;
-        usuario.email = googleUser.email;
-        usuario.img = googleUser.img;
-        usuario.google = true;
+        usuario.nombre = payload.name;
+        usuario.email = payload.email;
         usuario.password = ':)';
+        usuario.img = payload.picture;
+        usuario.google = true;
 
         usuario.save(( err, usuarioDB ) => {
+
+            if (err) {
+                return res.status(500).json({
+                    ok: true,
+                    mensaje: 'Error al crear usuario - google',
+                    errors: err
+                });
+            }
             var token = jwt.sign({ usuario: usuarioDB }, SEED, { expiresIn: 14400 }); 
             // 4 horas
             res.status(200).json({
                 ok: true,
                 usuario: usuarioDB,
                 token: token,
-                id: usuarioDB._id
+                id: usuarioDB._id,
+                menu: obtenerMenu(usuarioDB.role)
             });
         });
     }
@@ -148,9 +178,43 @@ app.post('/', (req, res ) => {
             ok: true,
             usuario: usuarioDB,
             token: token,
-            id: usuarioDB._id
+            id: usuarioDB._id, 
+            menu: obtenerMenu(usuarioDB.role)
         });
     })
 });
+
+function obtenerMenu ( ROLE ) {
+
+    var menu = [
+          {
+            titulo: 'Principal',
+            icono: 'mdi mdi-gauge',
+            submenu: [
+              { titulo: 'Dashboard', url: '/dashboard' },
+              { titulo : 'ProgressBar', url: '/progress' },
+              { titulo: 'Gráficas', url: '/graficas1' },
+              { titulo: 'Promesas', url: '/promesas' },
+              { titulo: 'RxJs', url: '/rxjs' }
+            ]
+          },
+          {
+            titulo: 'Mantenimientos',
+            icono: 'mdi mdi-folder-lock-open',
+            submenu: [
+            //   { titulo: 'Usuarios', url: '/usuarios' },
+              { titulo: 'Hospitales', url: '/hospitales' },
+              { titulo: 'Médicos', url: '/medicos' }
+            ]
+          }
+        ];
+
+        if ( ROLE === 'ADMIN_ROLE') {
+            menu[0].submenu.unshift( { titulo: 'Usuarios', url: '/usuarios' } );
+        }
+
+
+    return menu;
+}
 
 module.exports = app;
