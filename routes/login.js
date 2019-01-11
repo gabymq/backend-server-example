@@ -210,11 +210,11 @@ function obtenerMenu ( ROLE ) {
         ];
 
         if ( ROLE === 'ADMIN_ROLE') {
-            menu[0].submenu.unshift( { titulo: 'Usuarios', url: '/usuarios' } );
+            menu[1].submenu.unshift( { titulo: 'Usuarios', url: '/usuarios' } );
         }
 
 
     return menu;
 }
 
-module.exports = app;
+module.exports = app ;
